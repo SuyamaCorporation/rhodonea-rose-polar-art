@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ロドネアバラ曲線極座標アート</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #0a0a1e; }
+    canvas { display: block; }
+    input[type=range] { accent-color: #818cf8; }
+  </style>
+</head>
+<body class="min-h-screen text-white flex flex-col items-center py-4 gap-4">
+  <h1 class="text-2xl font-bold text-indigo-300">ロドネア バラ曲線 極座標アート</h1>
+
+  <div class="flex flex-wrap gap-3 items-center justify-center bg-gray-900 rounded-xl p-3 w-full max-w-3xl">
+    <label class="flex flex-col items-center text-xs text-gray-300 gap-1">
+      k 値
+      <input type="range" id="sliderK" min="10" max="100" value="30" step="1" class="w-28" />
+      <span id="valK" class="text-indigo-300">3.0</span>
+    </label>
+    <label class="flex flex-col items-center text-xs text-gray-300 gap-1">
+      振幅 a
+      <input type="range" id="sliderA" min="50" max="280" value="180" step="5" class="w-24" />
+      <span id="valA" class="text-indigo-300">180</span>
+    </label>
+    <label class="flex flex-col items-center text-xs text-gray-300 gap-1">
+      開始色相
+      <input type="range" id="sliderHue" min="0" max="360" value="0" step="5" class="w-24" />
+      <span id="valHue" class="text-indigo-300">0</span>
+    </label>
+    <label class="flex flex-col items-center text-xs text-gray-300 gap-1">
+      線幅
+      <input type="range" id="sliderLW" min="1" max="6" value="2" step="0.5" class="w-24" />
+      <span id="valLW" class="text-indigo-300">2</span>
+    </label>
+    <label class="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+      <input type="checkbox" id="chkAnimate" class="w-4 h-4 accent-indigo-500" />
+      アニメーション
+    </label>
+    <button id="btnSave" class="px-3 py-1 rounded bg-indigo-700 hover:bg-indigo-600 text-sm">PNG保存</button>
+  </div>
+
+  <div id="infoBox" class="text-sm text-indigo-200 bg-gray-900 rounded px-4 py-1 font-mono"></div>
+
+  <canvas id="canvas" class="rounded-xl border border-gray-800"></canvas>
+
+  <script>
+  (() => {
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const W = Math.min(window.innerWidth - 32, 660);
+    const H = W;
+    canvas.width = W;
+    canvas.height = H;
+    const CX = W / 2, CY = H / 2;
+
+    let k = 3.0;
+    let a = 180;
+    let startHue = 0;
+    let lw = 2;
+    let animating = false;
+    let animId;
+    let animK = k;
+
+    function petalCount(k) {
+      const kInt = Math.round(k * 10) / 10;
+      if (Number.isInteger(kInt)) {
+        return kInt % 2 === 0 ? kInt * 2 : kInt;
+      }
+      // rational k = p/q: n petals = p if p+q odd, 2p if p+q even
+      // Approximate: just show approximate
+      return '多数';
+    }
+
+    function getThetaMax(k) {
+      // For rational k=p/q, range is 2π*q; approximate with LCM
+      // For simplicity: use 20π which covers most cases cleanly
+      const kR = Math.round(k * 10) / 10;
+      if (Number.isInteger(kR) && kR % 2 === 0) return 2 * Math.PI; // even integer: 2π → 2k petals
+      return 20 * Math.PI; // cover all rational approximations
+    }
+
+    function drawRose(kVal, amplitude) {
+      ctx.fillStyle = 'rgb(10,10,30)';
+      ctx.fillRect(0, 0, W, H);
+
+      const tMax = getThetaMax(kVal);
+      const steps = 8000;
+      const dt = tMax / steps;
+
+      ctx.save();
+      ctx.lineWidth = lw;
+      ctx.lineJoin = 'round';
+
+      // Draw with gradient along the curve
+      for (let i = 0; i < steps; i++) {
+        const t0 = i * dt;
+        const t1 = (i + 1) * dt;
+        const r0 = amplitude * Math.cos(kVal * t0);
+        const r1 = amplitude * Math.cos(kVal * t1);
+        const x0 = CX + r0 * Math.cos(t0);
+        const y0 = CY + r0 * Math.sin(t0);
+        const x1 = CX + r1 * Math.cos(t1);
+        const y1 = CY + r1 * Math.sin(t1);
+
+        const hue = (startHue + (i / steps) * 180) % 360;
+        ctx.strokeStyle = `hsl(${hue}, 90%, 65%)`;
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Info
+      const pc = petalCount(kVal);
+      const infoBox = document.getElementById('infoBox');
+      const kDisp = kVal.toFixed(1);
+      infoBox.textContent = `k = ${kDisp}  →  約${pc}花弁  （r = a·cos(k·θ)）`;
+    }
+
+    function redraw() {
+      drawRose(k, a);
+    }
+
+    let lastAnimTime = 0;
+    function animLoop(ts) {
+      if (!animating) return;
+      if (ts - lastAnimTime > 50) {
+        lastAnimTime = ts;
+        animK = (animK + 0.05);
+        if (animK > 10) animK = 1;
+        // Update slider display
+        document.getElementById('sliderK').value = Math.round(animK * 10);
+        document.getElementById('valK').textContent = animK.toFixed(1);
+        k = animK;
+        drawRose(k, a);
+      }
+      animId = requestAnimationFrame(animLoop);
+    }
+
+    function bindSlider(id, valId, setter, fmt) {
+      const el = document.getElementById(id);
+      const span = document.getElementById(valId);
+      el.addEventListener('input', () => {
+        const v = parseFloat(el.value);
+        setter(v);
+        span.textContent = fmt ? fmt(v) : v;
+        if (!animating) redraw();
+      });
+    }
+
+    bindSlider('sliderK', 'valK', v => { k = v / 10; animK = k; }, v => (v / 10).toFixed(1));
+    bindSlider('sliderA', 'valA', v => { a = v; });
+    bindSlider('sliderHue', 'valHue', v => { startHue = v; });
+    bindSlider('sliderLW', 'valLW', v => { lw = v; });
+
+    document.getElementById('chkAnimate').addEventListener('change', e => {
+      animating = e.target.checked;
+      if (animating) { animK = k; requestAnimationFrame(animLoop); }
+      else cancelAnimationFrame(animId);
+    });
+
+    document.getElementById('btnSave').addEventListener('click', () => {
+      const link = document.createElement('a');
+      link.download = 'バラ曲線アート.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    });
+
+    redraw();
+  })();
+  </script>
+</body>
+</html>
